@@ -4,6 +4,9 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+import plotly.express as px
+import plotly.graph_objects as go
 
 def statistical_parity_difference(df, group_col, outcome_col, privileged_group):
     """Calculates the Statistical Parity Difference (SPD), a bias metric.
@@ -56,85 +59,185 @@ def equal_opportunity_difference(df, group_col, outcome_col, privileged_group):
 
     return eod
 
-def reweight(df, group_col, outcome_col, privileged_group, weight):
-    """Applies a reweighting technique to the input DataFrame to mitigate bias by duplicating samples from the underrepresented group.
-
-    Arguments:
-    df (pd.DataFrame): The original DataFrame to be reweighted.
-    group_col (str): The name of the column representing the sensitive group.
-    outcome_col (str): The name of the column representing the outcome variable.
-    privileged_group (any): The value in `group_col` that identifies the privileged group.
-    weight (float): A factor used to determine the number of rows to duplicate from the underrepresented group.
-
-    Output:
-    pd.DataFrame: A new DataFrame with samples reweighted to mitigate bias, potentially having more rows than the original DataFrame.
-    """
-
-    if group_col not in df.columns:
-        raise KeyError(f"Column \'{group_col}\' not found in DataFrame.")
-    if outcome_col not in df.columns:
-        raise KeyError(f"Column \'{outcome_col}\' not found in DataFrame.")
-
-    if df.empty:
-        return df.copy()
-
-    if weight == 0.0:
-        return df.copy()
-
-    unique_groups = df[group_col].unique()
-
-    if len(unique_groups) < 2:
-        return df.copy()
-
-    non_privileged_group_vals = [val for val in unique_groups if val != privileged_group]
-
-    if not non_privileged_group_vals or len(non_privileged_group_vals) > 1:
-        return df.copy()
-
-    group_A_val = privileged_group
-    group_B_val = non_privileged_group_vals[0]
-
-    group_A_initial_count = df[df[group_col] == group_A_val].shape[0]
-    group_B_initial_count = df[df[group_col] == group_B_val].shape[0]
-
-    underrepresented_group_val = None
-    underrepresented_group_initial_count = 0
-
-    if group_A_initial_count < group_B_initial_count:
-        underrepresented_group_val = group_A_val
-        underrepresented_group_initial_count = group_A_initial_count
-    else:
-        underrepresented_group_val = group_B_val
-        underrepresented_group_initial_count = group_B_initial_count
-
-    if underrepresented_group_initial_count == 0:
-        return df.copy()
-
-    df_len = len(df)
-
-    reweighted_target_add_size = int(weight * df_len)
-
-    rows_to_duplicate = min(reweighted_target_add_size, underrepresented_group_initial_count)
-
-    if rows_to_duplicate > 0:
-        underrepresented_group_df = df[df[group_col] == underrepresented_group_val]
-        duplicated_rows = underrepresented_group_df.sample(n=rows_to_duplicate, replace=True, random_state=42)
-        reweighted_df = pd.concat([df, duplicated_rows], ignore_index=True)
-        return reweighted_df
-    else:
-        return df.copy()
-
 def run_page2():
-    if 'synthetic_data' not in st.session_state:
-        st.warning("Please navigate to 'Data Generation & Baseline Model' first to generate data and train the initial model.")
+    st.header("5. Data Preprocessing")
+
+    st.markdown("""
+    **Business Value**: Data preprocessing is a crucial step to prepare raw data for machine learning models. Models often require numerical input and can perform poorly with unscaled features or categorical data in string format. Proper preprocessing ensures that the model can learn effectively, leading to better performance and more reliable bias detection and mitigation.
+
+    **Technical Implementation**: This section performs two key preprocessing steps:
+
+    1.  **Encoding Categorical Variables**: Machine learning algorithms typically work with numerical input. Our `gender` and `location` columns are categorical strings. We use `LabelEncoder` to convert these into numerical representations. For example, 'Male' might become 0 and 'Female' 1, or 'Urban' 0, 'Suburban' 1, and 'Rural' 2.
+        *   `LabelEncoder` assigns a unique integer to each category. This is suitable for ordinal features or when the number of categories is small and no inherent order is implied (though for gender, one-hot encoding might be preferred in some contexts, `LabelEncoder` is simpler for this demonstration).
+
+    2.  **Scaling Numerical Features**: Features like `age` and `income` can have vastly different scales. `StandardScaler` transforms these features such that they have a mean of 0 and a standard deviation of 1. This prevents features with larger numerical ranges (like income) from disproportionately influencing the model compared to features with smaller ranges (like age).
+        *   The formula for standardization is: $$ z = \frac{x - \mu}{\sigma} $$
+        Where:
+            *   $z$ is the scaled value.
+            *   $x$ is the original feature value.
+            *   $\mu$ is the mean of the feature.
+            *   $\sigma$ is the standard deviation of the feature.
+
+    These steps ensure that our data is in a suitable format for the Logistic Regression model, allowing it to converge more efficiently and perform optimally.
+    """)
+
+    st.subheader("Preprocessing Code")
+    st.code("""
+# Encode categorical features
+label_encoder = LabelEncoder()
+synthetic_data['gender'] = label_encoder.fit_transform(synthetic_data['gender'])
+synthetic_data['location'] = label_encoder.fit_transform(synthetic_data['location'])
+
+# Scale numerical features
+numerical_features = ['age', 'income']
+scaler = StandardScaler()
+synthetic_data[numerical_features] = scaler.fit_transform(synthetic_data[numerical_features])
+""", language="python")
+
+    # Actual execution
+    if st.session_state.synthetic_data is not None:
+        synthetic_data = st.session_state.synthetic_data.copy()
+        label_encoder = LabelEncoder()
+        synthetic_data['gender'] = label_encoder.fit_transform(synthetic_data['gender'])
+        synthetic_data['location'] = label_encoder.fit_transform(synthetic_data['location'])
+
+        numerical_features = ['age', 'income']
+        scaler = StandardScaler()
+        synthetic_data[numerical_features] = scaler.fit_transform(synthetic_data[numerical_features])
+
+        st.subheader("First 5 rows of Preprocessed Data:")
+        st.dataframe(synthetic_data.head())
+        st.session_state.synthetic_data_preprocessed = synthetic_data # Store preprocessed data
+    else:
+        st.warning("Please generate data on the 'Overview and Data Generation' page first.")
         return
-    
-    synthetic_data = st.session_state['synthetic_data']
-    model = st.session_state['model']
-    X_test = st.session_state['X_test']
-    y_test = st.session_state['y_test']
-    X_train = st.session_state['X_train']
-    y_train = st.session_state['y_train']
+
+    st.markdown("""
+    The code performs the necessary preprocessing steps on the `synthetic_data` DataFrame.
+
+    First, `LabelEncoder` is applied to the `gender` and `location` columns. This converts the categorical string values (e.g., 'Male', 'Female', 'Urban', 'Suburban', 'Rural') into numerical labels. For example, 'Female' and 'Male' might be converted to 0 and 1 respectively, and similarly for 'location'. This is crucial because machine learning models require numerical input.
+
+    Second, `StandardScaler` is applied to the `age` and `income` columns. These numerical features are scaled to have a mean of 0 and a standard deviation of 1. This standardization ensures that features with larger numerical ranges do not unduly influence the model's learning process.
+
+    The printed output displays the first five rows of the preprocessed `synthetic_data` DataFrame. You can observe that the `gender` and `location` columns now contain integer values, and the `age` and `income` columns contain scaled numerical values, typically centered around zero with small standard deviations. This transformation prepares the data for effective model training.
+    """)
+
+    st.header("6. Data Splitting")
+
+    st.markdown("""
+    **Business Value**: The primary business value of splitting data is to rigorously evaluate the generalization capability of a machine learning model. A model that performs well only on the data it was trained on (known as overfitting) is not reliable for making predictions on new, unseen data. By training on one portion of the data and testing on another, we can assess how well the model will perform in real-world scenarios, thereby building more robust and trustworthy AI systems.
+
+    **Technical Implementation**: We use `sklearn.model_selection.train_test_split` to divide our preprocessed data into two distinct sets:
+
+    *   **Training Set (80%)**: This portion of the data (80% in this case) is used to train the machine learning model. The model learns patterns and relationships from these examples.
+    *   **Testing Set (20%)**: This unseen portion of the data (20%) is reserved exclusively for evaluating the trained model's performance. By testing on data the model has never encountered, we get an unbiased estimate of its predictive power.
+
+    The parameters used are:
+    *   `X`: The features (independent variables) of our dataset, excluding the target variable.
+    *   `y`: The target variable (dependent variable), which is `loan_approval` in our case.
+    *   `test_size=0.2`: Specifies that 20% of the data should be allocated to the testing set, and consequently, 80% to the training set.
+    *   `random_state=42`: This parameter ensures reproducibility. If you run the split multiple times with the same `random_state`, you will always get the same training and testing sets. This is crucial for consistent experimentation.
+
+    After splitting, we print the sizes of the training and testing sets to confirm the split was performed correctly.
+    """)
+
+    st.subheader("Data Splitting Code")
+    st.code("""
+X = synthetic_data.drop('loan_approval', axis=1)
+y = synthetic_data['loan_approval']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+""", language="python")
+
+    # Actual execution
+    if st.session_state.synthetic_data_preprocessed is not None:
+        X = st.session_state.synthetic_data_preprocessed.drop('loan_approval', axis=1)
+        y = st.session_state.synthetic_data_preprocessed['loan_approval']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        st.write(f"Training set size: {len(X_train)}")
+        st.write(f"Testing set size: {len(X_test)}")
+
+        st.session_state.X = X
+        st.session_state.y = y
+        st.session_state.X_train = X_train
+        st.session_state.X_test = X_test
+        st.session_state.y_train = y_train
+        st.session_state.y_test = y_test
+
+    else:
+        st.warning("Please preprocess data first.")
+        return
+
+    st.markdown("""
+    The code first separates the features (`X`) from the target variable (`y`) in our `synthetic_data` DataFrame. The `loan_approval` column is dropped from `X` to become our `y`.
+
+    Then, it uses `train_test_split` to divide `X` and `y` into training and testing sets. We allocated 80% of the data for training (`X_train`, `y_train`) and 20% for testing (`X_test`, `y_test`). The `random_state=42` ensures that this split is consistent every time the code is run.
+
+    The printed output shows the number of samples in the training and testing sets, confirming that our data has been successfully partitioned. For instance, with 1000 total samples, you would expect approximately 800 samples in the training set and 200 in the testing set. This prepares our data for the model training and evaluation phases.
+    """)
+
+    st.header("7. Model Training")
+
+    st.markdown("""
+    **Business Value**: The core objective of this notebook is to demonstrate bias detection and mitigation in an AI model. Training a model is the foundational step that creates the system we intend to analyze for fairness. The predictive power of this model, even if initially biased, provides the baseline against which we will measure the impact of our bias mitigation strategies. Ultimately, a well-trained model, free from unfair biases, delivers accurate and equitable decisions, which is a key business value.
+
+    **Technical Implementation**: We choose **Logistic Regression** as our classification model for this demonstration. Here's why:
+
+    *   **Simplicity and Interpretability**: Logistic Regression is a relatively simple linear model, making its behavior and feature importances easier to understand compared to more complex black-box models. This is beneficial for an educational notebook focused on understanding bias.
+    *   **Binary Classification**: It is inherently well-suited for binary classification problems, such as our `loan_approval` target variable (approved/not approved).
+    *   **Probability Output**: Logistic Regression outputs probabilities, which can be useful for various downstream analyses, including some bias metrics.
+
+    **Model Training Steps**:
+
+    1.  **Instantiation**: We create an instance of `LogisticRegression` with `random_state=42` for reproducibility of the model's internal randomness.
+    2.  **Fitting**: The `model.fit(X_train, y_train)` method trains the model using the training features (`X_train`) and their corresponding true labels (`y_train`). During this process, the model learns the relationship between the input features and the likelihood of loan approval.
+    3.  **Prediction**: After training, `model.predict(X_test)` generates binary predictions (0 or 1) on the unseen test data (`X_test`). `model.predict_proba(X_test)[:, 1]` gives the probability of the positive class (loan approval).
+    4.  **Evaluation**: We evaluate the model's performance using two common metrics:
+        *   **Accuracy Score**: $$ Accuracy = \frac{\text{Number of Correct Predictions}}{\text{Total Number of Predictions}} $$
+            Accuracy measures the proportion of correctly classified instances (both approvals and rejections).
+        *   **AUC-ROC Score (Area Under the Receiver Operating Characteristic Curve)**: This metric assesses the model's ability to distinguish between the two classes across various classification thresholds. An AUC-ROC of 0.5 indicates no discrimination ability, while 1.0 indicates perfect discrimination.
+
+    These metrics provide a quantitative measure of our baseline model's predictive capability before any specific bias mitigation is applied.
+    """)
+
+    st.subheader("Model Training Code")
+    st.code("""
+model = LogisticRegression(random_state=42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+auc_roc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+""", language="python")
+
+    # Actual execution
+    if st.session_state.X_train is not None:
+        model = LogisticRegression(random_state=42)
+        model.fit(st.session_state.X_train, st.session_state.y_train)
+        y_pred = model.predict(st.session_state.X_test)
+        accuracy = accuracy_score(st.session_state.y_test, y_pred)
+        auc_roc = roc_auc_score(st.session_state.y_test, model.predict_proba(st.session_state.X_test)[:, 1])
+
+        st.write(f"Model Accuracy: {accuracy:.4f}")
+        st.write(f"AUC-ROC Score: {auc_roc:.4f}")
+
+        st.session_state.model = model
+        st.session_state.accuracy = accuracy
+        st.session_state.auc_roc = auc_roc
+    else:
+        st.warning("Please split data first.")
+        return
+
+    st.markdown("""
+    The code above trains a Logistic Regression model using our prepared training data and then evaluates its performance on the test data.
+
+    1.  **Model Initialization and Training**: A `LogisticRegression` model is initialized with `random_state=42` for reproducibility. The `model.fit(X_train, y_train)` command trains the model on the `X_train` features and `y_train` target labels.
+    2.  **Prediction**: After training, `model.predict(X_test)` generates binary predictions (0 or 1) for the loan approval outcome on the unseen test set. `model.predict_proba(X_test)[:, 1]` extracts the predicted probabilities of loan approval for each instance in the test set.
+    3.  **Evaluation Metrics**: The `accuracy_score` calculates the proportion of correctly predicted instances, while the `roc_auc_score` measures the area under the Receiver Operating Characteristic curve, indicating the model's ability to discriminate between positive and negative classes.
+
+    The printed output displays the `Model Accuracy` and `AUC-ROC Score`. These values represent the baseline performance of our model *before* any explicit bias detection or mitigation techniques are applied. A higher accuracy and AUC-ROC score generally indicate a better performing model. However, these metrics alone do not tell us about the fairness of the predictions, which we will address in the next sections.
+    """)
 
     st.header("8. Bias Detection: Statistical Parity Difference")
 
@@ -182,8 +285,14 @@ def statistical_parity_difference(df, group_col, outcome_col, privileged_group):
     return spd
 """, language="python")
 
-    spd = statistical_parity_difference(synthetic_data, 'gender', 'loan_approval', 1)
-    st.write(f"Statistical Parity Difference: {spd:.4f}")
+    # Actual execution
+    if st.session_state.synthetic_data_preprocessed is not None:
+        spd = statistical_parity_difference(st.session_state.synthetic_data_preprocessed, 'gender', 'loan_approval', 1) # 1 represents 'Male' (privileged)
+        st.write(f"Statistical Parity Difference: {spd:.4f}")
+        st.session_state.spd = spd
+    else:
+        st.warning("Please preprocess data first.")
+        return
 
     st.markdown("""
     The code executes the `statistical_parity_difference` function to quantify the bias in our `synthetic_data`.
@@ -195,7 +304,6 @@ def statistical_parity_difference(df, group_col, outcome_col, privileged_group):
 
     The printed output displays the calculated Statistical Parity Difference (SPD). A positive value indicates that the privileged group (Male) has a higher probability of receiving a loan approval than the unprivileged group (Female). This directly reflects the bias we intentionally introduced during data generation. For example, an SPD of 0.2 means males are 20% more likely to get a loan approved compared to females, demonstrating a clear disparate impact.
     """)
-    st.session_state['spd'] = spd # Store for next steps
 
     st.header("9. Bias Detection: Equal Opportunity Difference")
 
@@ -244,8 +352,14 @@ def equal_opportunity_difference(df, group_col, outcome_col, privileged_group):
     return eod
 """, language="python")
 
-    eod = equal_opportunity_difference(synthetic_data, 'gender', 'loan_approval', 1)
-    st.write(f"Equal Opportunity Difference: {eod:.4f}")
+    # Actual execution
+    if st.session_state.synthetic_data_preprocessed is not None:
+        eod = equal_opportunity_difference(st.session_state.synthetic_data_preprocessed, 'gender', 'loan_approval', 1) # 1 represents 'Male' (privileged)
+        st.write(f"Equal Opportunity Difference: {eod:.4f}")
+        st.session_state.eod = eod
+    else:
+        st.warning("Please preprocess data first.")
+        return
 
     st.markdown("""
     The code calculates the Equal Opportunity Difference (EOD) using our `equal_opportunity_difference` function. Similar to SPD, it uses:
@@ -257,189 +371,140 @@ def equal_opportunity_difference(df, group_col, outcome_col, privileged_group):
 
     The printed output displays the calculated EOD. A positive EOD indicates that among those who *actually* deserve a loan (i.e., their `loan_approval` is 1), the privileged group (Males) are being correctly identified at a higher rate than the unprivileged group (Females). This metric is crucial because it highlights if the model is systematically failing to grant favorable outcomes to qualified individuals from the unprivileged group, which is a significant fairness concern.
     """)
-    st.session_state['eod'] = eod # Store for next steps
 
-    st.header("10. Bias Mitigation: Reweighting")
+    st.header("12. Visualization: Bias Metrics Comparison")
 
     st.markdown("""
-    **Business Value**: Reweighting is a practical and interpretable bias mitigation technique that directly addresses dataset imbalances. In many real-world scenarios, historical data may reflect existing societal biases, leading to underrepresentation or under-selection of certain groups. By reweighting, businesses can proactively adjust their training data to promote fairness, leading to models that make more equitable decisions. This not only enhances ethical compliance but can also improve model performance for historically underserved groups, broadening market reach and improving user satisfaction.
+    **Business Value**: Visualizing bias metrics before and after mitigation is essential for clear communication and impact assessment. Numerical metrics can be abstract, but a compelling bar chart immediately highlights the reduction in unfairness achieved by mitigation strategies. This visual evidence supports ethical decision-making, stakeholder communication, and demonstrates accountability in building fair AI systems. It allows practitioners and non-technical stakeholders alike to quickly grasp the effectiveness of fairness interventions.
 
-    **Technical Implementation**: The Reweighting technique works by assigning different weights to individual data points, typically increasing the influence of underrepresented or disadvantaged groups during model training. The goal is to create a more balanced dataset in terms of group representation and outcome distribution, without physically altering the feature values.
+    **Technical Implementation**: This section generates a bar chart to visually compare the Statistical Parity Difference (SPD) and Equal Opportunity Difference (EOD) before and after applying the reweighting mitigation technique.
 
-    Our `reweight` function implements a specific form of reweighting, by **duplicating rows** of the underrepresented group. Here's the concept:
+    *   **Data Preparation**: We gather the calculated `spd`, `eod` (original values) and `spd_reweighted`, `eod_reweighted` (values after mitigation).
+    *   **Bar Chart Creation**: `plotly.graph_objects` is used to create a bar chart. Two sets of bars are plotted for each metric (SPD and EOD):
+        *   One set represents the 'Original' bias metric values.
+        *   The second set represents the 'Reweighted' bias metric values.
+    *   **Labels and Title**: The chart is appropriately titled 'Bias Metrics Comparison', with 'Difference' on the y-axis and the specific 'Metrics' on the x-axis.
+    *   **Legend**: A legend clarifies which bars correspond to 'Original' and 'Reweighted' metrics.
 
-    1.  **Identify Underrepresented Group**: The function first compares the counts of the privileged and non-privileged groups to determine which one is underrepresented based on initial data distribution.
-    2.  **Calculate Duplication Target**: It then calculates how many rows of the underrepresented group should be duplicated based on a `weight` factor and the total dataset size. The number of rows to add is constrained by `min(reweighted_size, group_B_size)`, implying it aims to increase the presence of the underrepresented group without making it disproportionately dominant over the *original* size of the larger group.
-    3.  **Duplicate Rows**: If `rows_to_duplicate` is greater than zero, it randomly samples rows from the underrepresented group *with replacement* and concatenates them back to the original DataFrame.
-
-    This process effectively increases the presence of the underrepresented group in the training data, allowing the model to learn more from these instances and potentially reduce bias in its predictions. The `weight` parameter controls the extent of this reweighting, with higher values leading to more duplication and a stronger push towards balancing the groups.
-
-    Mathematically, this can be seen as altering the effective sample size for different subgroups, thereby influencing the empirical probabilities that the model learns:
-
-    $$ P_{reweighted}(Y=y, A=a) = \frac{\sum_{i \in (Y=y, A=a)} w_i}{\sum_{i} w_i} $$
-
-    Where $w_i$ are the weights assigned to each sample. In our duplication method, $w_i$ for duplicated samples is effectively $>1$, while for others it is $1$.
+    This bar chart provides an intuitive and immediate visual comparison, allowing us to quickly assess the effectiveness of the reweighting strategy in reducing the observed biases. Ideally, the bars for the 'Reweighted' metrics should be closer to zero compared to the 'Original' metrics, indicating a successful reduction in bias.
     """)
 
-    st.subheader("`reweight` function definition")
+    st.subheader("Bias Metrics Comparison Plotting Code")
     st.code("""
-def reweight(df, group_col, outcome_col, privileged_group, weight):
-    \"\"\"Applies a reweighting technique to the input DataFrame to mitigate bias by duplicating samples from the underrepresented group.
+metrics_names = ['Statistical Parity Difference', 'Equal Opportunity Difference']
+original_values = [st.session_state.spd, st.session_state.eod]
 
-    Arguments:
-    df (pd.DataFrame): The original DataFrame to be reweighted.
-    group_col (str): The name of the column representing the sensitive group.
-    outcome_col (str): The name of the column representing the outcome variable.
-    privileged_group (any): The value in `group_col` that identifies the privileged group.
-    weight (float): A factor used to determine the number of rows to duplicate from the underrepresented group.
+df_plot = pd.DataFrame({
+    "Metric": metrics_names,
+    "Value": original_values,
+    "Type": ["Original"] * len(metrics_names)
+})
 
-    Output:
-    pd.DataFrame: A new DataFrame with samples reweighted to mitigate bias, potentially having more rows than the original DataFrame.
-    \"\"\"
+fig = px.bar(df_plot, x='Metric', y='Value', color='Type', barmode='group',
+             title='Bias Metrics Comparison: Original',
+             labels={'Value': 'Metric Value', 'Metric': 'Bias Metric'},
+             color_discrete_map={'Original': '#440154'})
+fig.add_hline(y=0, line_dash="dash", line_color="grey", annotation_text="Ideal Fairness (0 Difference)", annotation_position="bottom right")
 
-    if group_col not in df.columns:
-        raise KeyError(f"Column \'{group_col}\' not found in DataFrame.")
-    if outcome_col not in df.columns:
-        raise KeyError(f"Column \'{outcome_col}\' not found in DataFrame.")
-
-    if df.empty:
-        return df.copy()
-
-    if weight == 0.0:
-        return df.copy()
-
-    unique_groups = df[group_col].unique()
-
-    if len(unique_groups) < 2:
-        return df.copy()
-
-    non_privileged_group_vals = [val for val in unique_groups if val != privileged_group]
-
-    if not non_privileged_group_vals or len(non_privileged_group_vals) > 1:
-        return df.copy()
-
-    group_A_val = privileged_group
-    group_B_val = non_privileged_group_vals[0]
-
-    group_A_initial_count = df[df[group_col] == group_A_val].shape[0]
-    group_B_initial_count = df[df[group_col] == group_B_val].shape[0]
-
-    underrepresented_group_val = None
-    underrepresented_group_initial_count = 0
-
-    if group_A_initial_count < group_B_initial_count:
-        underrepresented_group_val = group_A_val
-        underrepresented_group_initial_count = group_A_initial_count
-    else:
-        underrepresented_group_val = group_B_val
-        underrepresented_group_initial_count = group_B_initial_count
-
-    if underrepresented_group_initial_count == 0:
-        return df.copy()
-
-    df_len = len(df)
-
-    reweighted_target_add_size = int(weight * df_len)
-
-    rows_to_duplicate = min(reweighted_target_add_size, underrepresented_group_initial_count)
-
-    if rows_to_duplicate > 0:
-        underrepresented_group_df = df[df[group_col] == underrepresented_group_val]
-        duplicated_rows = underrepresented_group_df.sample(n=rows_to_duplicate, replace=True, random_state=42)
-        reweighted_df = pd.concat([df, duplicated_rows], ignore_index=True)
-        return reweighted_df
-    else:
-        return df.copy()
+st.plotly_chart(fig)
 """, language="python")
 
-    reweighted_data = reweight(synthetic_data, 'gender', 'loan_approval', 1, 0.2)
-    st.write(f"Original data size: {len(synthetic_data)}")
-    st.write(f"Reweighted data size: {len(reweighted_data)}")
+    # Actual execution
+    if st.session_state.spd is not None and st.session_state.eod is not None:
+        metrics_names = ['Statistical Parity Difference', 'Equal Opportunity Difference']
+        original_values = [st.session_state.spd, st.session_state.eod]
+
+        df_plot = pd.DataFrame({
+            "Metric": metrics_names,
+            "Value": original_values,
+            "Type": ["Original"] * len(metrics_names)
+        })
+
+        fig = px.bar(df_plot, x='Metric', y='Value', color='Type', barmode='group',
+                     title='Bias Metrics Comparison: Original',
+                     labels={'Value': 'Metric Value', 'Metric': 'Bias Metric'},
+                     color_discrete_map={'Original': '#440154'})
+        fig.add_hline(y=0, line_dash="dash", line_color="grey", annotation_text="Ideal Fairness (0 Difference)", annotation_position="bottom right")
+
+        st.plotly_chart(fig)
+    else:
+        st.warning("Please complete model training first.")
+        return
 
     st.markdown("""
-    The code executes the `reweight` function to mitigate bias in our `synthetic_data`.
+    The code generates a bar chart comparing the two key bias metrics—Statistical Parity Difference (SPD) and Equal Opportunity Difference (EOD)—before applying the reweighting mitigation technique.
 
-    *   `df=synthetic_data`: The original DataFrame.
-    *   `group_col='gender'`: The sensitive attribute.
-    *   `outcome_col='loan_approval'`: The outcome variable.
-    *   `privileged_group=1`: 'Male' as the privileged group. This means the other group (Females, encoded as 0) will be considered for reweighting.
-    *   `weight=0.2`: A weighting factor. This determines the extent of duplication for the underrepresented group. In this implementation, it means we aim to add up to 20% of the original DataFrame's length in duplicated rows from the underrepresented group.
+    *   The x-axis displays the names of the bias metrics.
+    *   The y-axis represents the 'Difference' value for each metric.
+    *   Only 'Original' bars are shown here, representing the bias before mitigation.
 
-    The printed output shows the size of the `original data` and the `reweighted data`. You will observe that the `reweighted_data` DataFrame has a larger number of rows compared to the original. This increase in size is due to the duplication of samples from the underrepresented group (Females in this case), thereby increasing their representation in the dataset. This modified dataset will then be used to retrain our model, aiming to reduce the observed bias.
+    The purpose of this chart is to visually demonstrate the initial bias. By observing the height of the bars, we can easily see the magnitude of the unfairness in the model's predictions with respect to the `gender` attribute.
     """)
-    st.session_state['reweighted_data'] = reweighted_data # Store for next steps
 
-    st.header("11. Model Training and Evaluation after Reweighting")
+    st.header("13. Visualization: Feature Importances")
 
     st.markdown("""
-    **Business Value**: After applying a bias mitigation technique like reweighting, it's essential to retrain the model on the adjusted data and re-evaluate its performance and fairness. This step directly assesses whether the mitigation strategy was effective in reducing bias without significantly sacrificing predictive accuracy. From a business perspective, this ensures that efforts to improve fairness are validated and that the deployed AI system remains both equitable and performant, maintaining trust and regulatory compliance.
+    **Business Value**: Understanding which features most influence a model's decisions is paramount for transparency, interpretability, and debugging. In the context of AI bias, visualizing feature importances can reveal if sensitive attributes (or proxies for them) are disproportionately driving biased outcomes. This insight allows data scientists to identify the root causes of bias, guide feature engineering efforts, and build more ethical and explainable AI systems. For business stakeholders, it provides confidence in knowing *why* a model makes certain predictions.
 
-    **Technical Implementation**: This section performs the following steps:
+    **Technical Implementation**: This section generates a bar chart to visualize the coefficients of our Logistic Regression model, which serve as indicators of feature importance.
 
-    1.  **Data Splitting (Reweighted Data)**: The `reweighted_data` is split into new training and testing sets (`X_train_reweighted`, `X_test_reweighted`, `y_train_reweighted`, `y_test_reweighted`). It's crucial to split the *reweighted* data to ensure the model learns from the adjusted distribution.
+    *   **Feature Importances Extraction**: For a linear model like Logistic Regression, the absolute values of the coefficients (`model.coef_[0]`) directly reflect the strength and direction of each feature's influence on the outcome. A larger absolute coefficient implies a greater impact.
+    *   **DataFrame Creation**: A Pandas DataFrame (`feature_importances_df`) is created to store the feature names and their corresponding importance scores.
+    *   **Sorting**: The features are sorted by their importance in descending order, making it easy to identify the most influential factors.
+    *   **Bar Chart Visualization**: `plotly.express` is used to create the visualization as a bar chart for clearer representation of 1D importances:
+        *   The bar chart displays the `Importance` values, with `Feature` names as labels.
+        *   The bars are colored by importance value using a sequential color scale.
 
-    2.  **Model Retraining**: A new `LogisticRegression` model (`model_reweighted`) is instantiated and trained using the `X_train_reweighted` and `y_train_reweighted`. The model now learns from the data where the underrepresented group has increased presence.
-
-    3.  **Model Evaluation**: The retrained model's performance is evaluated on `X_test_reweighted` using:
-        *   **Accuracy Score**: `accuracy_score(y_test_reweighted, y_pred_reweighted)`
-        *   **AUC-ROC Score**: `roc_auc_score(y_test_reweighted, model_reweighted.predict_proba(X_test_reweighted)[:, 1])`
-
-    4.  **Bias Metrics Re-evaluation**: The `statistical_parity_difference` and `equal_opportunity_difference` functions are called again, but this time on the `reweighted_data` (or predictions made on its test split), to see how the bias metrics have changed after mitigation.
-
-    By comparing the accuracy, AUC-ROC, SPD, and EOD values before and after reweighting, we can assess the trade-offs. Ideally, bias metrics should move closer to zero (indicating fairness), while accuracy should remain high. A significant drop in accuracy after mitigation might indicate an overcorrection or a need for a different mitigation strategy.
+    This chart helps us understand which features the model relies on most heavily. If a sensitive feature (like 'gender') or a feature highly correlated with it (a 'proxy' feature) shows a high importance, it further supports the finding of bias and points to areas for further investigation or mitigation.
     """)
 
-    st.subheader("Reweighted Model Training and Evaluation Code")
+    st.subheader("Feature Importances Plotting Code")
     st.code("""
-# Split the reweighted data
-X_reweighted = reweighted_data.drop('loan_approval', axis=1)
-y_reweighted = reweighted_data['loan_approval']
+feature_importances = abs(st.session_state.model.coef_[0])
 
-X_train_reweighted, X_test_reweighted, y_train_reweighted, y_test_reweighted = train_test_split(X_reweighted, y_reweighted, test_size=0.2, random_state=42)
+feature_importances_df = pd.DataFrame({
+    'Feature': st.session_state.X.columns,
+    'Importance': feature_importances
+})
 
-# Train a new model
-model_reweighted = LogisticRegression(random_state=42)
-model_reweighted.fit(X_train_reweighted, y_train_reweighted)
+feature_importances_df = feature_importances_df.sort_values('Importance', ascending=True) # Sort ascending for horizontal bar plot
 
-# Evaluate the new model
-y_pred_reweighted = model_reweighted.predict(X_test_reweighted)
-accuracy_reweighted = accuracy_score(y_test_reweighted, y_pred_reweighted)
-auc_roc_reweighted = roc_auc_score(y_test_reweighted, model_reweighted.predict_proba(X_test_reweighted)[:, 1])
-
-# Calculate bias metrics on reweighted data
-spd_reweighted = statistical_parity_difference(reweighted_data, 'gender', 'loan_approval', 1)
-eod_reweighted = equal_opportunity_difference(reweighted_data, 'gender', 'loan_approval', 1)
+fig_imp = px.bar(feature_importances_df, x='Importance', y='Feature',
+                 orientation='h',
+                 title='Feature Importances (Logistic Regression Coefficients)',
+                 color='Importance',
+                 color_continuous_scale=px.colors.sequential.Viridis)
+st.plotly_chart(fig_imp)
 """, language="python")
 
-    X_reweighted = reweighted_data.drop('loan_approval', axis=1)
-    y_reweighted = reweighted_data['loan_approval']
-    X_train_reweighted, X_test_reweighted, y_train_reweighted, y_test_reweighted = train_test_split(X_reweighted, y_reweighted, test_size=0.2, random_state=42)
-    model_reweighted = LogisticRegression(random_state=42)
-    model_reweighted.fit(X_train_reweighted, y_train_reweighted)
-    y_pred_reweighted = model_reweighted.predict(X_test_reweighted)
-    accuracy_reweighted = accuracy_score(y_test_reweighted, y_pred_reweighted)
-    auc_roc_reweighted = roc_auc_score(y_test_reweighted, model_reweighted.predict_proba(X_test_reweighted)[:, 1])
-    spd_reweighted = statistical_parity_difference(reweighted_data, 'gender', 'loan_approval', 1)
-    eod_reweighted = equal_opportunity_difference(reweighted_data, 'gender', 'loan_approval', 1)
+    # Actual execution
+    if st.session_state.model is not None and st.session_state.X is not None:
+        feature_importances = abs(st.session_state.model.coef_[0])
 
-    st.session_state['model_reweighted'] = model_reweighted
-    st.session_state['accuracy_reweighted'] = accuracy_reweighted
-    st.session_state['auc_roc_reweighted'] = auc_roc_reweighted
-    st.session_state['spd_reweighted'] = spd_reweighted
-    st.session_state['eod_reweighted'] = eod_reweighted
+        feature_importances_df = pd.DataFrame({
+            'Feature': st.session_state.X.columns,
+            'Importance': feature_importances
+        })
 
-    st.write(f"Reweighted Model Accuracy: {accuracy_reweighted:.4f}")
-    st.write(f"Reweighted AUC-ROC Score: {auc_roc_reweighted:.4f}")
-    st.write(f"Reweighted Statistical Parity Difference: {spd_reweighted:.4f}")
-    st.write(f"Reweighted Equal Opportunity Difference: {eod_reweighted:.4f}")
+        feature_importances_df = feature_importances_df.sort_values('Importance', ascending=True) # Sort ascending for horizontal bar plot
+
+        fig_imp = px.bar(feature_importances_df, x='Importance', y='Feature',
+                         orientation='h',
+                         title='Feature Importances (Logistic Regression Coefficients)',
+                         color='Importance',
+                         color_continuous_scale=px.colors.sequential.Viridis)
+        st.plotly_chart(fig_imp)
+    else:
+        st.warning("Please complete model training first.")
+        return
 
     st.markdown("""
-    The code section performs the critical step of retraining our model on the reweighted data and then re-evaluating its performance and fairness metrics.
+    The code generates a bar chart that visually represents the importance of each feature in the Logistic Regression model.
 
-    1.  **Data Preparation**: The `reweighted_data` DataFrame, which now has an increased representation of the previously underrepresented group, is split into new training and testing sets.
-    2.  **Model Retraining**: A fresh `LogisticRegression` model (`model_reweighted`) is trained on this reweighted training data. This new model learns from the adjusted distribution, aiming to reduce bias.
-    3.  **Performance Evaluation**: The retrained model's `accuracy` and `AUC-ROC score` are calculated on the reweighted test set. These metrics are then printed, allowing for a direct comparison with the original model's performance.
-    4.  **Bias Re-evaluation**: Crucially, the `statistical_parity_difference` and `equal_opportunity_difference` functions are called again, this time using the `reweighted_data`. The new SPD and EOD values reflect the impact of the reweighting mitigation strategy.
+    1.  **Extracting Importances**: It retrieves the absolute coefficients of the trained `model`. For linear models like Logistic Regression, the magnitude of these coefficients indicates how much each feature contributes to the prediction. A larger absolute value means a stronger influence.
+    2.  **Structuring for Visualization**: These importances are then organized into a DataFrame along with their corresponding feature names, and sorted in descending order of importance.
+    3.  **Bar Chart Generation**: `plotly.express` is used to create the visualization. The bar chart displays the feature names on one axis and their importance values. The color intensity and numerical annotations make it easy to quickly identify which features have the highest impact.
 
-    By comparing these `Reweighted Model Accuracy`, `Reweighted AUC-ROC Score`, `Reweighted Statistical Parity Difference`, and `Reweighted Equal Opportunity Difference` values with their original counterparts, we can analyze the trade-off. Ideally, we would see the bias metrics (SPD and EOD) move closer to zero (indicating reduced bias), while the accuracy and AUC-ROC scores remain comparable or improve. This comparison helps us understand the effectiveness of reweighting in promoting fairness without unduly compromising predictive power.
+    By examining this bar chart, we can gain insights into which features the model primarily relies on to make its `loan_approval` predictions. If the `gender` feature (or any other feature that might serve as a proxy for it) shows a high level of importance, it reinforces our understanding of where the model's bias might be originating. This visualization is crucial for understanding the model's decision-making process and for pinpointing areas that might require further attention in bias mitigation efforts.
     """)
+
