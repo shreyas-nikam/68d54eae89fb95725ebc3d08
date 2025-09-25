@@ -1,33 +1,75 @@
 import pytest
 import pandas as pd
-from definition_1e1ce00c108644588b91e6cb923d7240 import validate_data
+import numpy as np
+from definition_8830b5564b5a47b9a13d79e146bc1caa import validate_data
 
-@pytest.fixture
-def sample_dataframe():
-    data = {'age': [30, 40, 25],
-            'income': [50000, 60000, 45000],
+@pytest.mark.parametrize("df_input, expected_columns_input, expected_return_value, expected_output_part", [
+    # Test Case 1: Valid DataFrame - Expected functionality
+    (
+        pd.DataFrame({
+            'age': [25, 30, 35],
+            'income': [50000, 60000, 70000],
             'location': ['Urban', 'Suburban', 'Rural'],
             'gender': ['Male', 'Female', 'Male'],
-            'loan_approval': [1, 0, 1]}
-    return pd.DataFrame(data)
+            'loan_approval': [1, 0, 1]
+        }),
+        ['age', 'income', 'location', 'gender', 'loan_approval'],
+        True,
+        "Summary statistics for numeric columns:"
+    ),
+    # Test Case 2: Missing Column - Edge case (Structural error)
+    (
+        pd.DataFrame({
+            'age': [25, 30, 35],
+            'income': [50000, 60000, 70000],
+            'location': ['Urban', 'Suburban', 'Rural'],
+            'loan_approval': [1, 0, 1] # 'gender' column is missing
+        }),
+        ['age', 'income', 'location', 'gender', 'loan_approval'],
+        False,
+        "Validation Error: Missing expected columns"
+    ),
+    # Test Case 3: Incorrect Data Type for 'age' - Edge case (Type error)
+    (
+        pd.DataFrame({
+            'age': [25.0, 30.0, 35.0], # float64, not int64
+            'income': [50000, 60000, 70000],
+            'location': ['Urban', 'Suburban', 'Rural'],
+            'gender': ['Male', 'Female', 'Male'],
+            'loan_approval': [1, 0, 1]
+        }),
+        ['age', 'income', 'location', 'gender', 'loan_approval'],
+        False,
+        "Type Error: Incorrect data type for 'age' column"
+    ),
+    # Test Case 4: Missing Values in Critical Columns ('age', 'income', 'gender') - Edge case (Data quality error)
+    (
+        pd.DataFrame({
+            'age': [25, np.nan, 35], # NaN in age
+            'income': [50000, 60000, 70000],
+            'location': ['Urban', 'Suburban', 'Rural'],
+            'gender': ['Male', 'Female', 'Male'],
+            'loan_approval': [1, 0, 1]
+        }),
+        ['age', 'income', 'location', 'gender', 'loan_approval'],
+        False,
+        "Validation Error: Missing values found in critical columns"
+    ),
+    # Test Case 5: Empty DataFrame - Edge case (Extreme structural error)
+    (
+        pd.DataFrame(), # An empty DataFrame has no columns
+        ['age', 'income', 'location', 'gender', 'loan_approval'],
+        False,
+        "Validation Error: Missing expected columns"
+    ),
+])
+def test_validate_data(df_input, expected_columns_input, expected_return_value, expected_output_part, capsys):
+    # Call the function
+    result = validate_data(df_input, expected_columns_input)
 
-def test_validate_data_valid(sample_dataframe):
-    expected_columns = ['age', 'income', 'location', 'gender', 'loan_approval']
-    assert validate_data(sample_dataframe.copy(), expected_columns) == True
+    # Assert the return value
+    assert result == expected_return_value
 
-def test_validate_data_missing_column(sample_dataframe):
-    expected_columns = ['age', 'income', 'location', 'gender']
-    with pytest.raises(ValueError, match="Missing expected columns"):
-        validate_data(sample_dataframe.copy(), expected_columns)
-
-def test_validate_data_incorrect_dtype(sample_dataframe):
-    sample_dataframe['age'] = sample_dataframe['age'].astype(str)
-    expected_columns = ['age', 'income', 'location', 'gender', 'loan_approval']
-    with pytest.raises(TypeError, match="Incorrect data type for 'age' column"):
-        validate_data(sample_dataframe.copy(), expected_columns)
-
-def test_validate_data_missing_values(sample_dataframe):
-    sample_dataframe.loc[0, 'income'] = None
-    expected_columns = ['age', 'income', 'location', 'gender', 'loan_approval']
-    with pytest.raises(ValueError, match="Missing values found in critical columns"):
-        validate_data(sample_dataframe.copy(), expected_columns)
+    # Capture stdout and assert part of the expected message
+    captured = capsys.readouterr()
+    assert expected_output_part in captured.out
