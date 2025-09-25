@@ -3,7 +3,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-import plotly.express as px
 
 def generate_synthetic_data(num_samples, bias_factor, seed):
     """
