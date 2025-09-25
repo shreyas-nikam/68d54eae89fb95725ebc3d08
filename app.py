@@ -1,1 +1,29 @@
-# Starter Python file
+import streamlit as st
+st.set_page_config(page_title="QuLab", layout="wide")
+st.sidebar.image("https://www.quantuniversity.com/assets/img/logo5.jpg")
+st.sidebar.divider()
+st.title("QuLab")
+st.divider()
+st.markdown("""
+In this lab, we will explore **Explainable AI (XAI)** techniques specifically designed for sequence data. Understanding how an AI model makes predictions on time-series or sequential information is crucial for building trust, ensuring fairness, and enabling effective decision-making in various domains like finance, healthcare, and IoT.
+
+We will focus on two main categories of XAI:
+1.  **Pre-modeling Techniques**: These are applied *before* the model training phase, often involving data manipulation to enhance the model's robustness and indirectly its interpretability. We will specifically look at **data augmentation** for time-series, which helps in creating diverse training examples from existing ones, making the model less sensitive to minor variations.
+2.  **In-modeling Techniques**: These are integrated *directly into the model's architecture* to provide transparency into its internal workings. We will implement and visualize **attention mechanisms**, which allow a sequence model to highlight the most relevant time steps in an input sequence when making a prediction, thus revealing its "focus."
+
+Through interactive demonstrations, you will be able to generate synthetic time-series data, apply different augmentation strategies, train and compare various models, and visualize the attention weights to gain deep insights into how these models interpret and react to sequential patterns.
+
+Let's dive in and demystify the "black box" of sequence-based AI!
+""")
+# Your code starts here
+page = st.sidebar.selectbox(label="Navigation", options=["1. Introduction & Data Generation", "2. Data Augmentation & Baseline Model", "3. Attention Mechanisms & Model Comparison"])
+if page == "1. Introduction & Data Generation":
+    from application_pages.page1 import run_page1
+    run_page1()
+elif page == "2. Data Augmentation & Baseline Model":
+    from application_pages.page2 import run_page2
+    run_page2()
+elif page == "3. Attention Mechanisms & Model Comparison":
+    from application_pages.page3 import run_page3
+    run_page3()
+# Your code ends
